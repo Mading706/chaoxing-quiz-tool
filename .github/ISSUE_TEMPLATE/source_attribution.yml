@@ -1,0 +1,31 @@
+name: 来源与授权线索
+description: 提供 xuzhiy 原始脚本、仓库或许可证线索
+title: "[Origin] "
+labels:
+  - documentation
+body:
+  - type: input
+    id: url
+    attributes:
+      label: 来源链接
+      description: 原始仓库、脚本商店、网页存档或作者公开说明。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 可验证证据
+      description: 请说明为何该链接可能是原始来源，包括版本、日期、独特代码片段或许可证信息。
+    validations:
+      required: true
+  - type: textarea
+    id: license
+    attributes:
+      label: 许可证或授权内容
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 确认
+      options:
+        - label: 我没有仅凭相同用户名推断作者身份。
+          required: true

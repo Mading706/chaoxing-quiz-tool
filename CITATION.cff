@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the repository and preserve the original author attribution."
+title: "Chaoxing Quiz Tool: Learning Question Parser and Kaoshibao Exporter"
+type: software
+authors:
+  - family-names: "xuzhiy"
+    alias: "xuzhiy"
+  - family-names: "Mading706"
+    alias: "Mading706"
+version: 1.46.0
+date-released: 2026-07-05
+repository-code: "https://github.com/Mading706/chaoxing-quiz-tool"
+url: "https://github.com/Mading706/chaoxing-quiz-tool"
+abstract: "A Tampermonkey userscript that parses Chaoxing assignments, exams, and in-class quizzes and exports them to Kaoshibao-compatible Excel, regular Excel, Word, and PDF."
+keywords:
+  - chaoxing
+  - userscript
+  - tampermonkey
+  - quiz-export
+  - kaoshibao
+  - excel

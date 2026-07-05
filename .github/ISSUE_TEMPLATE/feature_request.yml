@@ -1,0 +1,30 @@
+name: 功能建议
+description: 建议新的解析、导出或维护功能
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与问题
+      description: 请先描述实际问题，而不只是给出实现方案。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: 使用边界
+      options:
+        - label: 此建议不涉及自动提交答案、绕过考试限制或规避访问控制。
+          required: true
