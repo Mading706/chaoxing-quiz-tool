@@ -38,10 +38,11 @@ npm run check
 1. 执行语法与元数据检查；
 2. 读取用户脚本中的版本号；
 3. 在标签不存在时创建对应的 `vX.Y.Z` 标签；
-4. 创建或更新 GitHub Release；
-5. 将 `chaoxing-quiz-tool.user.js` 作为 Release 附件上传。
+4. 在标签已存在时验证标签内脚本版本与标签名称一致；
+5. 创建或更新 GitHub Release；
+6. 从该标签提取 `chaoxing-quiz-tool.user.js` 并作为 Release 附件上传。
 
-该流程可以安全重试：如果标签和 Release 已存在，会验证标签是否指向当前提交，并更新脚本附件。
+该流程可以安全重试；已经发布的同版本会更新脚本附件，而不会重复建立标签。
 
 也可以从本地手动创建标签：
 
