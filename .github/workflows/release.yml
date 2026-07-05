@@ -32,11 +32,17 @@ jobs:
             exit 1
           fi
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            chaoxing-quiz-tool.user.js \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" chaoxing-quiz-tool.user.js --clobber
+            echo "Updated existing release ${GITHUB_REF_NAME}."
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              chaoxing-quiz-tool.user.js \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
