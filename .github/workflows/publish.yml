@@ -48,11 +48,5 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            chaoxing-quiz-tool.user.js \
-            --title "${{ steps.version.outputs.tag }}" \
-            --generate-notes
+      - name: Release handoff
+        run: echo "Tag pushed. The Release workflow will create the GitHub Release and attach the userscript."
