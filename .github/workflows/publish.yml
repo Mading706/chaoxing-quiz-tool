@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -35,18 +39,37 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create and push tag
+      - name: Create tag when missing
         shell: bash
         run: |
           TAG="${{ steps.version.outputs.tag }}"
+          git fetch --tags --force
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
-            exit 1
+            TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+            if [ "$TAG_COMMIT" != "$GITHUB_SHA" ]; then
+              echo "Tag $TAG already points to $TAG_COMMIT, not current commit $GITHUB_SHA."
+              exit 1
+            fi
+            echo "Tag $TAG already points to the current commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
 
-      - name: Release handoff
-        run: echo "Tag pushed. The Release workflow will create the GitHub Release and attach the userscript."
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" chaoxing-quiz-tool.user.js --clobber
+            echo "Updated existing release $TAG."
+          else
+            gh release create "$TAG" \
+              chaoxing-quiz-tool.user.js \
+              --title "$TAG" \
+              --generate-notes
+          fi
