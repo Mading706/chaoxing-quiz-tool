@@ -1,22 +1,31 @@
 // ==UserScript==
 // @name         学习通一键选 A
 // @namespace    local.chaoxing.select-a
-// @version      1.1.0
+// @version      1.2.0
 // @description  一键选择可见的 A 选项，课程反馈问卷另支持选 A 并提交
 // @match        https://*.chaoxing.com/mycourse/studentstudy*
 // @match        https://*.chaoxing.com/mooc-ans/work/*
 // @match        https://*.chaoxing.com/mooc2-ans/work/*
 // @match        https://*.chaoxing.com/work/*
 // @match        https://*.chaoxing.com/ananas/modules/zt/vote/*
+// @match        https://mobilelearn.chaoxing.com/page/questionnaire/answerQuestionChapter*
 // @updateURL    https://raw.githubusercontent.com/Mading706/chaoxing-quiz-tool/select-a/chaoxing-select-a.user.js
 // @downloadURL  https://raw.githubusercontent.com/Mading706/chaoxing-quiz-tool/select-a/chaoxing-select-a.user.js
 // @run-at       document-idle
-// @noframes
 // @grant        none
 // ==/UserScript==
 
 (() => {
   'use strict';
+
+  function isQuestionnairePage(doc) {
+    return doc.location.hostname === 'mobilelearn.chaoxing.com' &&
+      doc.location.pathname === '/page/questionnaire/answerQuestionChapter';
+  }
+
+  // 实际答卷可能由跨域 iframe 加载，脚本在该框架内独立运行。
+  const onQuestionnairePage = isQuestionnairePage(document);
+  if (window !== window.top && !onQuestionnairePage) return;
 
   const buttonId = 'chaoxing-select-a-button';
   if (document.getElementById(buttonId)) return;
@@ -33,6 +42,8 @@
     'button', 'input[type="submit"]', 'input[type="button"]', 'a', '[role="button"]',
     '[onclick]', '[class*="submit" i]', '[id*="submit" i]',
   ].join(', ');
+  const footerLabels = ['提交', '提交问卷', 'submit', 'submitsurvey', 'submitquestionnaire'];
+  const confirmLabels = [...footerLabels, '确认提交', '确定提交', 'confirmsubmit', 'confirmsubmission'];
 
   function isVisible(element) {
     if (!element?.isConnected || !element.getClientRects().length) return false;
@@ -128,7 +139,7 @@
 
   function controlText(control) {
     const text = control.tagName === 'INPUT' ? control.value : control.innerText;
-    return (text || control.getAttribute('aria-label') || '').replace(/\s+/g, '');
+    return (text || control.getAttribute('aria-label') || '').replace(/\s+/g, '').toLowerCase();
   }
 
   function submitControls(doc, labels) {
@@ -139,12 +150,16 @@
       other !== control && control.contains(other)));
   }
 
+  function asksToSubmit(dialog) {
+    const text = (dialog.innerText ?? '').replace(/\s+/g, '');
+    return /(?:确认|确定|是否).{0,16}提交|提交后|(?:confirm|sure|wantto).{0,24}submit|aftersubmi(?:t|ssion)/i.test(text);
+  }
+
   function confirmationDialog(control) {
     for (let parent = control.parentElement; parent && parent !== control.ownerDocument.body;
       parent = parent.parentElement) {
-      const text = (parent.innerText ?? '').replace(/\s+/g, '');
       if (parent.matches(dialogSelector) ||
-        (/(?:确认|确定|是否).{0,16}提交|提交后/.test(text) && /取消|返回/.test(text))) {
+        (asksToSubmit(parent) && /取消|返回|cancel|back/i.test(parent.innerText))) {
         return parent;
       }
     }
@@ -153,10 +168,35 @@
 
   function surveyFooter(doc, options) {
     if (!options.length) return null;
-    const controls = submitControls(doc, ['提交', '提交问卷']).filter(control =>
+    const isFooter = control =>
       !confirmationDialog(control) && options.every(({ target }) =>
-        target.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING));
+        target.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (isQuestionnairePage(doc)) {
+      const footer = doc.querySelector('#answer_form #submitSuccess');
+      if (isVisible(footer) && footerLabels.includes(controlText(footer)) && isFooter(footer)) return footer;
+    }
+    const controls = submitControls(doc, footerLabels).filter(isFooter);
     return controls.length === 1 ? controls[0] : null;
+  }
+
+  function inspectSurveys() {
+    const documents = Array.from(visibleDocuments(document))
+      .filter(doc => isQuestionnairePage(doc) || doc.location.pathname.startsWith(votePath));
+    const candidates = documents.map(doc => ({ doc, options: optionTargets(doc) }));
+    const ready = candidates.filter(({ doc, options }) => surveyFooter(doc, options));
+    if (ready.length === 1) return { survey: ready[0] };
+    if (ready.length > 1) return { message: '检测到多份可提交的反馈问卷，无法确定要提交哪一份' };
+    if (!documents.length) return { message: '当前页面未打开可读取的课程反馈框' };
+    if (candidates.some(({ options }) => options.length)) {
+      return { message: '已识别 A 选项，但未找到唯一的问卷底部「提交」按钮' };
+    }
+    const hasVisibleOptions = documents.some(doc =>
+      Array.from(doc.querySelectorAll(`${nativeSelector}, ${customSelector}`)).some(
+        option => isVisible(option) || Array.from(option.labels ?? []).some(isVisible),
+      ));
+    return { message: hasVisibleOptions
+      ? '问卷已显示选项，但脚本未识别到 A'
+      : '反馈框内未显示可填写的问卷选项' };
   }
 
   async function waitFor(find, timeout) {
@@ -174,24 +214,29 @@
     submitButton.disabled = true;
     button.disabled = true;
     try {
-      const surveys = Array.from(visibleDocuments(document))
-        .filter(doc => doc.location.pathname.startsWith(votePath))
-        .map(doc => ({ doc, options: optionTargets(doc) }))
-        .filter(({ doc, options }) => surveyFooter(doc, options));
-      if (surveys.length !== 1) {
-        status.textContent = '未找到可提交的课程反馈问卷';
+      status.textContent = '正在查找课程反馈问卷…';
+      let result;
+      const survey = await waitFor(() => {
+        result = inspectSurveys();
+        return result.survey;
+      }, 2400);
+      if (!survey) {
+        status.textContent = result.message;
         return;
       }
 
-      const { doc, options } = surveys[0];
+      const { doc, options } = survey;
       // 确认弹窗可能显示在问卷内，也可能由某一层父页面渲染。
       const dialogDocuments = [doc];
       for (let frame = doc.defaultView.frameElement; frame; frame = frame.ownerDocument.defaultView.frameElement) {
         dialogDocuments.push(frame.ownerDocument);
       }
+      const genericConfirmLabels = ['确定', '确认', 'confirm', 'ok', 'yes'];
       const findConfirmControls = () => dialogDocuments.flatMap(scope =>
-        submitControls(scope, ['提交', '提交问卷', '确认提交', '确定提交'])
-          .filter(control => confirmationDialog(control)));
+        submitControls(scope, [...confirmLabels, ...genericConfirmLabels]).filter(control => {
+          const dialog = confirmationDialog(control);
+          return dialog && (confirmLabels.includes(controlText(control)) || asksToSubmit(dialog));
+        }));
       if (findConfirmControls().length) {
         status.textContent = '已有提交弹窗，请先处理该弹窗';
         return;
@@ -266,8 +311,29 @@
   submitButton.id = 'chaoxing-select-a-and-submit-button';
   submitButton.textContent = '一键选 A 并提交';
   submitButton.addEventListener('click', selectAAndSubmit);
-  if (location.pathname.startsWith('/mycourse/studentstudy') || location.pathname.startsWith(votePath)) {
+  const onStudyPage = location.pathname.startsWith('/mycourse/studentstudy');
+  if (onStudyPage || onQuestionnairePage || location.pathname.startsWith(votePath)) {
     panel.append(submitButton);
   }
   document.body.append(panel);
+
+  if (onStudyPage) {
+    // 独立问卷内有自己的按钮，避免课程页按钮盖在上面。
+    function syncPanelVisibility() {
+      const surveyFrame = document.getElementById('voteIframe');
+      const hide = isVisible(surveyFrame) && surveyFrame.contentDocument === null;
+      const display = hide ? 'none' : 'flex';
+      if (panel.style.display !== display) panel.style.display = display;
+    }
+
+    syncPanelVisibility();
+    const observer = new MutationObserver(syncPanelVisibility);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'src', 'id'],
+    });
+    document.addEventListener('load', syncPanelVisibility, true);
+  }
 })();
